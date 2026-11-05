@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Candidate, EntityType } from './types';
 import { detect } from './core/detect';
-import { parseDict } from './core/dict';
+import { extractLexicon, type LexSource } from './core/lexicon';
 
 /** 一段字符区间，用于把「刚才动了哪里」传回界面高亮。 */
 export interface Span {
@@ -20,10 +20,32 @@ export interface ManualResult {
   spans: Span[];
 }
 
+/**
+ * 主体清单的一条。清单本身就是词表——抽取出的候选默认全部勾选，
+ * 所以「发现了主体」和「主体参与脱敏」不再需要两步确认。
+ */
+export interface DictItem {
+  name: string;
+  type: EntityType;
+  /** 勾选状态。取消勾选 = 从词表移除，但保留在清单里方便再勾回来。 */
+  enabled: boolean;
+  /** lex = 从正文抽取，manual = 用户手动添加。 */
+  origin: 'lex' | 'manual';
+  /** 用户手动改过类型。重抽时不覆盖，但来源仍算抽取。 */
+  typeEdited?: boolean;
+  source?: LexSource;
+  count?: number;
+  sample?: string;
+  confidence?: 'high' | 'medium';
+}
+
+/** 可选的实体类型，用于手动添加与逐条改类。 */
+export const DICT_TYPES: EntityType[] = ['机构', '人名', '项目', '其他'];
+
 export interface SessionState {
   rawText: string;
   sourceName: string;
-  dictText: string;
+  dictItems: DictItem[];
   maskDates: boolean;
   candidates: Candidate[];
   excluded: string[];
@@ -31,8 +53,14 @@ export interface SessionState {
   recent: RecentSpan[];
 
   setRawText: (text: string, name?: string) => void;
-  setDictText: (text: string) => void;
   setMaskDates: (v: boolean) => void;
+  /** 从正文重抽主体，合并进清单；已存在条目保留原勾选与类型。返回抽到的条数。 */
+  loadLexicon: () => number;
+  toggleDict: (name: string) => void;
+  setAllDict: (enabled: boolean) => void;
+  addDict: (name: string, type: EntityType) => { ok: boolean; message?: string };
+  removeDict: (name: string) => void;
+  cycleDictType: (name: string) => void;
   analyze: () => void;
   addManual: (start: number, end: number, type: EntityType) => ManualResult;
   exclude: (canonical: string) => Span[];
@@ -56,7 +84,7 @@ export function findAllOccurrences(text: string, needle: string): Span[] {
 export const useSession = create<SessionState>((set, get) => ({
   rawText: '',
   sourceName: '',
-  dictText: '',
+  dictItems: [],
   maskDates: false,
   candidates: [],
   excluded: [],
@@ -70,17 +98,112 @@ export const useSession = create<SessionState>((set, get) => ({
       analyzed: false,
       candidates: [],
       recent: [],
+      // 换了正文，抽取来的条目不再对应任何文字，必须清掉；
+      // 手动添加的条目是用户自己的知识，留着，换稿后还能用
+      dictItems: get().dictItems.filter((i) => i.origin === 'manual'),
     }),
-
-  setDictText: (text) => set({ dictText: text }),
 
   setMaskDates: (v) => set({ maskDates: v }),
 
+  loadLexicon: () => {
+    const { rawText, dictItems } = get();
+    if (!rawText.trim()) {
+      set({ dictItems: [] });
+      return 0;
+    }
+
+    const found = extractLexicon(rawText);
+    const prev = new Map(dictItems.map((i) => [i.name, i] as const));
+
+    const merged: DictItem[] = found.map((c) => {
+      const old = prev.get(c.name);
+      if (old) {
+        // 已存在的条目：勾选状态和用户改过的类型优先于抽取结果
+        return {
+          ...old,
+          count: c.count,
+          sample: c.sample,
+          confidence: c.confidence,
+          source: old.origin === 'lex' ? c.source : old.source,
+          // 用户改过的类型优先，不被抽取结果冲掉
+          type: old.origin === 'manual' || old.typeEdited ? old.type : c.type,
+        };
+      }
+      return {
+        name: c.name,
+        type: c.type,
+        // 抽取到的默认全部勾选
+        enabled: true,
+        origin: 'lex',
+        source: c.source,
+        count: c.count,
+        sample: c.sample,
+        confidence: c.confidence,
+      };
+    });
+
+    // 手动添加但正文里抽不到的，保留在清单末尾
+    for (const it of dictItems) {
+      if (it.origin === 'manual' && !merged.some((m) => m.name === it.name)) {
+        merged.push(it);
+      }
+    }
+
+    set({ dictItems: merged });
+    return found.length;
+  },
+
+  toggleDict: (name) =>
+    set({
+      dictItems: get().dictItems.map((i) =>
+        i.name === name ? { ...i, enabled: !i.enabled } : i,
+      ),
+    }),
+
+  setAllDict: (enabled) =>
+    set({ dictItems: get().dictItems.map((i) => ({ ...i, enabled })) }),
+
+  addDict: (name, type) => {
+    const clean = name.trim().replace(/\s+/g, '');
+    if (clean.length < 2) return { ok: false, message: '名称至少 2 个字' };
+    const items = get().dictItems;
+    if (items.some((i) => i.name === clean)) {
+      return { ok: false, message: `「${clean}」已在清单中` };
+    }
+    set({
+      dictItems: [
+        ...items,
+        { name: clean, type, enabled: true, origin: 'manual' },
+      ],
+    });
+    return { ok: true };
+  },
+
+  removeDict: (name) =>
+    set({ dictItems: get().dictItems.filter((i) => i.name !== name) }),
+
+  /** 类型判断错了就地纠正，比删了重加快。 */
+  cycleDictType: (name) =>
+    set({
+      dictItems: get().dictItems.map((i) => {
+        if (i.name !== name) return i;
+        const at = DICT_TYPES.indexOf(i.type);
+        const next = DICT_TYPES[(at + 1) % DICT_TYPES.length];
+        return { ...i, type: next, typeEdited: true };
+      }),
+    }),
+
   analyze: () => {
-    const { rawText, dictText, maskDates } = get();
+    const { rawText, maskDates } = get();
     if (!rawText) return;
+
+    // 从未抽取过就点开始识别：先自动抽取，候选默认全部勾选，不让用户卡在这一步
+    if (get().dictItems.length === 0) get().loadLexicon();
+
     const result = detect(rawText, {
-      dict: parseDict(dictText),
+      dict: get()
+        .dictItems.filter((i) => i.enabled)
+        .map((i) => ({ name: i.name, type: i.type })),
       maskDates,
       minQuantity: 100,
     });
@@ -154,6 +277,7 @@ export const useSession = create<SessionState>((set, get) => ({
     set({
       rawText: '',
       sourceName: '',
+      dictItems: [],
       candidates: [],
       excluded: [],
       analyzed: false,

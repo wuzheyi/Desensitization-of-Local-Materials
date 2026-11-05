@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { useSession } from '../store';
+import type { EntityType } from '../types';
+import { DICT_TYPES, useSession } from '../store';
 import { readFileAsText } from '../io/files';
-import { extractLexicon, sourceLabel, mergeIntoDict, type LexCandidate } from '../core/lexicon';
-import { parseDict } from '../core/dict';
+import { sourceLabel } from '../core/lexicon';
 
 type Props = { onNext: () => void };
 
@@ -26,36 +26,42 @@ const SAMPLE = `受让方：深圳市前海云启科技有限公司（以下简�
 export function ImportStep({ onNext }: Props) {
   const rawText = useSession((s) => s.rawText);
   const sourceName = useSession((s) => s.sourceName);
-  const dictText = useSession((s) => s.dictText);
+  const items = useSession((s) => s.dictItems);
   const maskDates = useSession((s) => s.maskDates);
   const setRawText = useSession((s) => s.setRawText);
-  const setDictText = useSession((s) => s.setDictText);
   const setMaskDates = useSession((s) => s.setMaskDates);
-  const analyze = useSession((s) => s.analyze);
+  const loadLexicon = useSession((s) => s.loadLexicon);
+  const toggleDict = useSession((s) => s.toggleDict);
+  const setAllDict = useSession((s) => s.setAllDict);
+  const addDict = useSession((s) => s.addDict);
+  const removeDict = useSession((s) => s.removeDict);
+  const cycleDictType = useSession((s) => s.cycleDictType);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-
-  const [lex, setLex] = useState<LexCandidate[] | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const dictNames = useMemo(
-    () => new Set(parseDict(dictText).map((d) => d.name)),
-    [dictText],
+  const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState<EntityType>('机构');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const enabledCount = useMemo(() => items.filter((i) => i.enabled).length, [items]);
+  const extracted = useMemo(
+    () => items.filter((i) => i.origin === 'lex').length,
+    [items],
   );
 
   const handleFile = async (file: File) => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const text = await readFileAsText(file);
       if (!text.trim()) throw new Error('文件里没有可读文本');
       setRawText(text, file.name);
-      setLex(null);
-      setPicked(new Set());
+      // 导入即抽取，候选默认全部勾选——不需要用户再点一次「加入」
+      loadLexicon();
     } catch (e) {
       setError(e instanceof Error ? e.message : '文件读取失败');
     } finally {
@@ -63,29 +69,15 @@ export function ImportStep({ onNext }: Props) {
     }
   };
 
-  const runExtract = () => {
-    const found = extractLexicon(rawText);
-    setLex(found);
-    // 默认只勾高置信：中置信（项目名之类）误报更多，让用户主动选
-    setPicked(new Set(found.filter((c) => c.confidence === 'high' && !dictNames.has(c.name)).map((c) => c.name)));
-    setOpen(true);
-  };
-
-  const toggle = (name: string) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
-
-  const applyPicked = () => {
-    const items = (lex ?? []).filter((c) => picked.has(c.name));
-    setDictText(mergeIntoDict(dictText, items));
-    setLex(null);
-    setPicked(new Set());
-    setOpen(false);
+  const submitAdd = () => {
+    if (!newName.trim()) return;
+    const r = addDict(newName, newType);
+    if (!r.ok) {
+      setAddError(r.message ?? '添加失败');
+      return;
+    }
+    setAddError(null);
+    setNewName('');
   };
 
   const start = () => {
@@ -93,29 +85,23 @@ export function ImportStep({ onNext }: Props) {
       setError('请先导入或粘贴材料');
       return;
     }
-    // 词表还是空的，且没抽过候选：正文里的公司名一定漏脱。
-    // 拦一次让用户确认，再点就放行（也允许用户就是不想脱敏主体名）。
-    if (!lex && dictNames.size === 0 && !notice) {
-      const found = extractLexicon(rawText);
-      if (found.length > 0) {
-        setLex(found);
-        setPicked(
-          new Set(found.filter((c) => c.confidence === 'high').map((c) => c.name)),
-        );
-        setOpen(true);
-        setNotice(
-          `词表还是空的，正文里有 ${found.length} 个候选主体。勾选后点「加入词表」再开始识别；如果确实只想脱敏金额和证件号，再点一次「开始识别」直接继续。`,
-        );
-        return;
-      }
-    }
     setError(null);
+
+    // 粘贴后没触发过抽取（比如直接按了按钮）：就地补一次
+    if (items.length === 0) loadLexicon();
+    const state = useSession.getState();
+    const selected = state.dictItems.filter((i) => i.enabled).length;
+
+    if (selected === 0 && !notice) {
+      setNotice(
+        '清单里没有勾选任何主体。公司名、人名不会被替换，只有金额、证件号这类规则项会脱敏。确认继续请再点一次「开始识别与脱敏」。',
+      );
+      return;
+    }
     setNotice(null);
-    analyze();
+    useSession.getState().analyze();
     onNext();
   };
-
-  const pending = (lex ?? []).filter((c) => !dictNames.has(c.name)).length;
 
   return (
     <section className="step">
@@ -161,14 +147,7 @@ export function ImportStep({ onNext }: Props) {
                 className="link"
                 onClick={() => {
                   setRawText(SAMPLE, '示例材料');
-                  const found = extractLexicon(SAMPLE);
-                  setLex(found);
-                  setPicked(
-                    new Set(
-                      found.filter((c) => c.confidence === 'high').map((c) => c.name),
-                    ),
-                  );
-                  setOpen(true);
+                  loadLexicon();
                 }}
               >
                 载入示例
@@ -181,127 +160,131 @@ export function ImportStep({ onNext }: Props) {
           value={rawText}
           spellCheck={false}
           placeholder="在此粘贴尽调材料正文，或载入示例看看效果"
-          onChange={(e) => {
-            setRawText(e.target.value);
-            setLex(null);
-            setPicked(new Set());
+          onChange={(e) => setRawText(e.target.value)}
+          onBlur={() => {
+            // 粘贴/输入后补一次抽取，列表为空时才做，避免打断人工勾选
+            if (extracted === 0 && rawText.trim()) loadLexicon();
           }}
         />
       </div>
 
       <div className="field">
         <div className="field-head">
-          <span>自定义词表</span>
+          <span>主体清单</span>
           <span className="muted">
-            已收录 {dictNames.size} 条 · 简称会自动扩展
+            已选 <b>{enabledCount}</b> / {items.length} 条 · 简称会自动扩展
           </span>
         </div>
 
-        <div className="lex-bar">
-          <button
-            className="btn ghost sm"
-            onClick={runExtract}
-            disabled={!rawText.trim() || busy}
-            title="用机构后缀、以下简称句式、职务上下文等规则，从正文里找出可能是主体的名称"
-          >
-            从正文抽取候选实体
-          </button>
-          {lex && (
-            <>
-              <span className="muted">
-                找到 {lex.length} 个，待处理 {pending} 个
-              </span>
-              <button className="link" onClick={() => setOpen((v) => !v)}>
-                {open ? '收起' : '展开'}
-              </button>
-            </>
-          )}
-          {!lex && rawText.trim() && (
-            <span className="muted">
-              不抽也行，但目标公司、关联方、主要自然人都在词表里才脱得干净
+        <div className="lex-panel">
+          <div className="lex-tools">
+            <button
+              className="link"
+              onClick={() => loadLexicon()}
+              disabled={!rawText.trim() || busy}
+              title="用机构后缀、以下简称句式、职务上下文等规则，从正文里重新找出主体；你手动添加的条目会保留"
+            >
+              重新抽取
+            </button>
+            <span className="lex-tools-sep" />
+            <button className="link" onClick={() => setAllDict(true)} disabled={items.length === 0}>
+              全选
+            </button>
+            <button className="link" onClick={() => setAllDict(false)} disabled={items.length === 0}>
+              全不选
+            </button>
+            <span className="lex-tools-hint">
+              取消勾选 = 不脱敏该主体 · 点类型可改
             </span>
-          )}
-        </div>
-
-        {lex && open && (
-          <div className="lex-panel">
-            <div className="lex-tools">
-              <button
-                className="link"
-                onClick={() =>
-                  setPicked(
-                    new Set(lex.filter((c) => !dictNames.has(c.name)).map((c) => c.name)),
-                  )
-                }
-              >
-                全选
-              </button>
-              <button
-                className="link"
-                onClick={() =>
-                  setPicked(
-                    new Set(
-                      lex
-                        .filter((c) => c.confidence === 'high' && !dictNames.has(c.name))
-                        .map((c) => c.name),
-                    ),
-                  )
-                }
-              >
-                只选高置信
-              </button>
-              <button className="link" onClick={() => setPicked(new Set())}>
-                清空
-              </button>
-              <span className="lex-tools-hint">悬停可看原文上下文</span>
-            </div>
-
-            <div className="lex-list">
-              {lex.map((c) => {
-                const inDict = dictNames.has(c.name);
-                return (
-                  <label
-                    key={c.name}
-                    className={`lex-row${inDict ? ' in-dict' : ''}`}
-                    title={c.sample}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={inDict || picked.has(c.name)}
-                      disabled={inDict}
-                      onChange={() => toggle(c.name)}
-                    />
-                    <span className="lex-main">
-                      <span className="lex-name">{c.name}</span>
-                      <span className="lex-type" data-type={c.type}>
-                        {c.type}
-                      </span>
-                    </span>
-                    <span className="lex-src">{sourceLabel(c.source)}</span>
-                    <span className="lex-count">×{c.count}</span>
-                  </label>
-                );
-              })}
-            </div>
-
-            <div className="lex-foot">
-              <span className="muted">
-                勾选的会合并进下方词表，可再手动增删
-              </span>
-              <button className="primary sm" onClick={applyPicked} disabled={picked.size === 0}>
-                加入词表（{picked.size}）
-              </button>
-            </div>
           </div>
-        )}
 
-        <textarea
-          className="input dict-input"
-          value={dictText}
-          spellCheck={false}
-          placeholder={'深圳市前海云启科技有限公司\n杭州启元投资管理有限公司\n陈立平\n也可用「人名:张三」显式指定类型'}
-          onChange={(e) => setDictText(e.target.value)}
-        />
+          <div className="lex-list">
+            {items.length === 0 && (
+              <div className="lex-empty">
+                {rawText.trim()
+                  ? '正文里没抽到主体，可在下方手动添加公司名、人名或项目名。'
+                  : '导入或粘贴材料后，这里会自动列出识别到的主体。'}
+              </div>
+            )}
+
+            {items.map((item) => (
+              <div
+                key={item.name}
+                className={`lex-row${item.enabled ? '' : ' off'}${
+                  item.origin === 'manual' ? ' manual' : ''
+                }`}
+                title={item.sample ?? item.name}
+              >
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  onChange={() => toggleDict(item.name)}
+                  aria-label={`${item.enabled ? '取消' : '勾选'}${item.name}`}
+                />
+                <span className="lex-name" onClick={() => toggleDict(item.name)}>
+                  {item.name}
+                </span>
+                <button
+                  type="button"
+                  className="lex-type"
+                  data-type={item.type}
+                  onClick={() => cycleDictType(item.name)}
+                  title="点击切换类型：机构 → 人名 → 项目 → 其他"
+                >
+                  {item.type}
+                </button>
+                <span className="lex-src">
+                  {item.origin === 'manual' ? '手动' : sourceLabel(item.source!)}
+                </span>
+                <span className="lex-count">{item.count ? `×${item.count}` : '—'}</span>
+                <button
+                  type="button"
+                  className="lex-del"
+                  onClick={() => removeDict(item.name)}
+                  title="从清单中删除"
+                  aria-label={`删除${item.name}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="lex-add">
+            <input
+              className="lex-add-input"
+              value={newName}
+              spellCheck={false}
+              placeholder="手动添加：输入公司名、人名或项目名"
+              onChange={(e) => {
+                setNewName(e.target.value);
+                setAddError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitAdd();
+                }
+              }}
+            />
+            <select
+              className="lex-add-type"
+              value={newType}
+              onChange={(e) => setNewType(e.target.value as EntityType)}
+              title="选择实体类型"
+            >
+              {DICT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <button className="btn ghost sm" onClick={submitAdd} disabled={!newName.trim()}>
+              添加
+            </button>
+          </div>
+          {addError && <div className="lex-error">{addError}</div>}
+        </div>
       </div>
 
       <label className="checkbox">
@@ -318,7 +301,9 @@ export function ImportStep({ onNext }: Props) {
 
       <div className="actions-bar">
         <span className="muted">所有处理都在浏览器内完成，页面不会发出任何网络请求</span>
-        <button className="primary" onClick={start}>开始识别与脱敏</button>
+        <button className="primary" onClick={start}>
+          开始识别与脱敏
+        </button>
       </div>
     </section>
   );

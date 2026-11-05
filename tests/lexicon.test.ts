@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractLexicon, mergeIntoDict } from '../src/core/lexicon';
+import { extractLexicon } from '../src/core/lexicon';
 
 const TEXT = `受让方：深圳市前海云启科技有限公司（以下简称"云启科技"）
 统一社会信用代码：91440300MA5FL3XK2P
@@ -63,21 +63,5 @@ describe('词表自动抽取', () => {
 
   it('空文本不报错', () => {
     expect(extractLexicon('')).toEqual([]);
-  });
-});
-
-describe('合并进词表', () => {
-  it('按名称去重，保留用户已有条目', () => {
-    const merged = mergeIntoDict('已有公司\n陈立平', [
-      { name: '已有公司', type: '机构' },
-      { name: '云启科技', type: '机构' },
-      { name: '王振华', type: '人名' },
-    ]);
-    expect(merged.split('\n')).toEqual(['已有公司', '陈立平', '云启科技', '王振华']);
-  });
-
-  it('类型推断不出来时写上显式前缀', () => {
-    const merged = mergeIntoDict('', [{ name: '启元一号项目', type: '项目' }]);
-    expect(merged).toBe('项目:启元一号项目');
   });
 });

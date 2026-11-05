@@ -16,7 +16,6 @@
 
 import type { EntityType } from '../types';
 import { extractShortNames } from './alias';
-import { inferType } from './dict';
 
 export type LexSource = 'org' | 'short' | 'person' | 'project';
 
@@ -429,7 +428,7 @@ function context(text: string, at: number, len: number): string {
 }
 
 const SOURCE_LABEL: Record<LexSource, string> = {
-  org: '机构后缀',
+  org: '名称后缀',
   short: '简称',
   person: '姓名线索',
   project: '项目名',
@@ -542,31 +541,4 @@ export function extractLexicon(text: string): LexCandidate[] {
       b.name.length - a.name.length,
   );
   return kept;
-}
-
-/** 把勾选的候选合并进现有词表文本，按名称去重。 */
-export function mergeIntoDict(
-  dictText: string,
-  picked: Array<{ name: string; type: EntityType }>,
-): string {
-  const lines = dictText
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  const existing = new Set(
-    lines.map((l) => {
-      const m = /^(?:机构|人名|项目|其他)\s*[:：]\s*(.+)$/.exec(l);
-      return (m ? m[1] : l).trim();
-    }),
-  );
-
-  for (const p of picked) {
-    if (existing.has(p.name)) continue;
-    existing.add(p.name);
-    // 类型能被推断出来就不加前缀，保持词表干净
-    lines.push(inferType(p.name) === p.type ? p.name : `${p.type}:${p.name}`);
-  }
-
-  return lines.join('\n');
 }
