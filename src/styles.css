@@ -452,9 +452,84 @@ button {
   padding: 2px 10px;
   font-size: 12px;
   color: #374151;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.chip:hover { background: #e8ecf3; border-color: var(--border-strong); }
+
+.chip.active {
+  background: var(--accent-weak);
+  border-color: #b9cdff;
+  color: #1d4ed8;
 }
 
 .chip b { color: var(--accent); font-weight: 600; }
+
+/* ---------- 按类型下钻 ---------- */
+.type-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.type-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #f8f9fb;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  color: #374151;
+}
+
+.type-panel-body { max-height: 220px; overflow-y: auto; }
+
+.type-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 14px;
+  border: none;
+  border-bottom: 1px solid #f2f4f7;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.type-item:last-child { border-bottom: none; }
+.type-item:hover { background: #f2f6fd; }
+
+.type-item.active { background: #fff8e1; box-shadow: inset 3px 0 0 #eab308; }
+
+.type-token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  background: #eef2ff;
+  color: #3730a3;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.type-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.type-occ { font-size: 11.5px; color: var(--muted); }
+.type-origin { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 
 /* ---------- selection bar ---------- */
 .selbar {
@@ -478,6 +553,25 @@ button {
   font-family: inherit;
   background: #fff;
 }
+
+.sel-count { font-size: 12px; color: var(--muted); }
+.sel-count.warn { color: var(--warn); font-weight: 500; }
+
+.undo-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+
+.undo-bar .link { color: var(--warn); font-weight: 500; }
 
 /* ---------- aligned compare ---------- */
 .compare {
@@ -570,6 +664,42 @@ mark.hit {
 }
 
 mark.hit:hover { background: #ffe58a; }
+
+/* 当前聚焦的实体：两栏同步高亮，一眼看出这个信息在全文出现在哪几处 */
+mark.hit.is-active {
+  background: #ffd666;
+  border-bottom-color: #b45309;
+  box-shadow: 0 0 0 2px #fbbf24;
+}
+
+.tok.is-active {
+  background: #ffd666;
+  border-color: #d97706;
+  color: #7c2d12;
+  box-shadow: 0 0 0 2px #fbbf24;
+}
+
+/* 刚被标记的位置：脉冲两次，指出「这次动了哪些地方」 */
+mark.hit.is-new,
+.tok.is-new {
+  animation: mark-pop 0.65s ease-out 2;
+}
+
+@keyframes mark-pop {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.75); }
+  70% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+/* 撤销脱敏后恢复成明文的位置 */
+.seg-restored {
+  background: #fee2e2;
+  border: 1px dashed #f87171;
+  border-radius: 3px;
+  padding: 0 1px;
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.55);
+}
 
 .tok {
   background: #eef2ff;
