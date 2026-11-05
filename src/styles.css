@@ -829,4 +829,7 @@ code {
   .lex-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
   .lex-src { display: none; }
   .lex-tools-hint { display: none; }
+  .type-item { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 6px 10px; }
+  .type-origin { display: none; }
+  .selbar { gap: 8px; }
 }
