@@ -6,6 +6,12 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   base: './',
   plugins: [react()],
+  // 固定开发服务器端口，避免 5173 与其他项目冲突，也不让 Vite 悄悄换端口
+  server: {
+    host: '127.0.0.1',
+    port: 5273,
+    strictPort: true,
+  },
   // 缓存写到项目内，避免落在系统临时目录
   cacheDir: 'node_modules/.vite',
   build: {

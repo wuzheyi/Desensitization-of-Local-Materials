@@ -20,13 +20,13 @@ if errorlevel 1 (
 )
 
 rem ---------- 2. Already running? Just open the browser ----------
-netstat -ano | findstr ":5173" | findstr "LISTENING" >nul 2>nul
+netstat -ano | findstr ":5273" | findstr "LISTENING" >nul 2>nul
 if not errorlevel 1 (
     echo  Service is already running. Opening browser...
-    echo  URL: http://127.0.0.1:5173/
-    start "" http://127.0.0.1:5173/
+    echo  URL: http://127.0.0.1:5273/
+    start "" http://127.0.0.1:5273/
     echo.
-    echo  To restart: close the window holding port 5173, then run this again.
+    echo  To restart: close the window holding port 5273, then run this again.
     echo.
     ping -n 4 127.0.0.1 >nul
     exit /b 0
@@ -46,12 +46,12 @@ if not exist "node_modules" (
 )
 
 rem ---------- 4. Open browser after the server is ready ----------
-start "" /min cmd /c ping -n 5 127.0.0.1 ^>nul ^& start "" http://127.0.0.1:5173/
+start "" /min cmd /c ping -n 5 127.0.0.1 ^>nul ^& start "" http://127.0.0.1:5273/
 
 rem ---------- 5. Run server in foreground (close window to stop) ----------
 echo  Starting server; browser will open shortly...
 echo.
-echo  URL: http://127.0.0.1:5173/
+echo  URL: http://127.0.0.1:5273/
 echo  Close this window to stop the server.
 echo.
 call npm start
