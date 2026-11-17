@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { EntityType } from '../types';
 import { DICT_TYPES, useSession } from '../store';
 import { readFileAsText } from '../io/files';
 import { sourceLabel } from '../core/lexicon';
+import { inferEntityType } from '../core/dict';
 
 type Props = { onNext: () => void };
 
@@ -23,6 +24,12 @@ const SAMPLE = `受让方：深圳市前海云启科技有限公司（以下简�
 杭州启元投资管理有限公司。本次交易由中金资本管理有限公司担任财务顾问，
 天健会计师事务所（特殊普通合伙）出具审计报告。`;
 
+interface Selection {
+  text: string;
+  start: number;
+  end: number;
+}
+
 export function ImportStep({ onNext }: Props) {
   const rawText = useSession((s) => s.rawText);
   const sourceName = useSession((s) => s.sourceName);
@@ -34,8 +41,9 @@ export function ImportStep({ onNext }: Props) {
   const toggleDict = useSession((s) => s.toggleDict);
   const setAllDict = useSession((s) => s.setAllDict);
   const addDict = useSession((s) => s.addDict);
+  const addFromSelection = useSession((s) => s.addFromSelection);
+  const updateDict = useSession((s) => s.updateDict);
   const removeDict = useSession((s) => s.removeDict);
-  const cycleDictType = useSession((s) => s.cycleDictType);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,16 +54,76 @@ export function ImportStep({ onNext }: Props) {
   const [newType, setNewType] = useState<EntityType>('机构');
   const [addError, setAddError] = useState<string | null>(null);
 
+  // 文本框选区
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [selType, setSelType] = useState<EntityType>('机构');
+  const [selFeedback, setSelFeedback] = useState<string | null>(null);
+  const rawRef = useRef<HTMLTextAreaElement>(null);
+
+  // 行内编辑：当前编辑的名称，以及草稿值
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
   const enabledCount = useMemo(() => items.filter((i) => i.enabled).length, [items]);
   const extracted = useMemo(
     () => items.filter((i) => i.origin === 'lex').length,
     [items],
   );
 
+  const captureSelection = () => {
+    const el = rawRef.current;
+    if (!el) return;
+    const { selectionStart: start, selectionEnd: end } = el;
+    if (start === end) {
+      setSelection(null);
+      return;
+    }
+    const text = el.value.slice(start, end);
+    if (!text.trim()) {
+      setSelection(null);
+      return;
+    }
+    setSelection({ text, start, end });
+    setSelType(inferEntityType(text));
+    setSelFeedback(null);
+  };
+
+  const submitSelection = () => {
+    if (!selection) return;
+    // 选区加词后自动判型已预填，但允许用户在下拉里改过再提交
+    const r = addFromSelection(selection.text);
+    if (!r.ok) {
+      setSelFeedback(r.message ?? '添加失败');
+      return;
+    }
+    // 预填类型被用户改过时，立即按所选类型覆盖
+    if (r.name && r.type && selType !== r.type) {
+      updateDict(r.name, { type: selType });
+    }
+    setSelFeedback(`已加入词表：${r.name}（${selType}）`);
+    setSelection(null);
+    if (rawRef.current) {
+      rawRef.current.selectionStart = rawRef.current.selectionEnd =
+        selection.end;
+    }
+  };
+
+  const commitEdit = (oldName: string) => {
+    const r = updateDict(oldName, { name: editName });
+    if (!r.ok) {
+      setEditError(r.message ?? '修改失败');
+      return;
+    }
+    setEditing(null);
+    setEditError(null);
+  };
+
   const handleFile = async (file: File) => {
     setBusy(true);
     setError(null);
     setNotice(null);
+    setSelection(null);
     try {
       const text = await readFileAsText(file);
       if (!text.trim()) throw new Error('文件里没有可读文本');
@@ -148,6 +216,7 @@ export function ImportStep({ onNext }: Props) {
                 onClick={() => {
                   setRawText(SAMPLE, '示例材料');
                   loadLexicon();
+                  setSelection(null);
                 }}
               >
                 载入示例
@@ -156,16 +225,57 @@ export function ImportStep({ onNext }: Props) {
           </span>
         </div>
         <textarea
+          ref={rawRef}
           className="input raw-input"
           value={rawText}
           spellCheck={false}
           placeholder="在此粘贴尽调材料正文，或载入示例看看效果"
-          onChange={(e) => setRawText(e.target.value)}
+          onChange={(e) => {
+            setRawText(e.target.value);
+            setSelection(null);
+          }}
+          onSelect={captureSelection}
+          onMouseUp={captureSelection}
+          onKeyUp={captureSelection}
           onBlur={() => {
             // 粘贴/输入后补一次抽取，列表为空时才做，避免打断人工勾选
             if (extracted === 0 && rawText.trim()) loadLexicon();
           }}
         />
+        {selection && (
+          <div className="sel-add-bar">
+            <span className="sel-add-text">
+              选中：<b>{selection.text.trim().slice(0, 24)}</b>
+              {selection.text.trim().length > 24 ? '…' : ''}
+            </span>
+            <span className="sel-add-kind">识别为</span>
+            <select
+              className="lex-add-type"
+              value={selType}
+              onChange={(e) => setSelType(e.target.value as EntityType)}
+              aria-label="选择加入词表的类型"
+            >
+              {DICT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <button className="btn ghost sm" onClick={submitSelection}>
+              加入词表
+            </button>
+            <button className="link" onClick={() => setSelection(null)}>
+              取消
+            </button>
+            {selFeedback && <span className="sel-add-error">{selFeedback}</span>}
+          </div>
+        )}
+        {selFeedback && !selection && (
+          <div className="sel-feedback">{selFeedback}</div>
+        )}
+        {rawText.length > 0 && !selection && (
+          <div className="sel-hint">提示：在上方文字里拖选主体名称，可直接加入下方词表</div>
+        )}
       </div>
 
       <div className="field">
@@ -182,7 +292,7 @@ export function ImportStep({ onNext }: Props) {
               className="link"
               onClick={() => loadLexicon()}
               disabled={!rawText.trim() || busy}
-              title="用机构后缀、以下简称句式、职务上下文等规则，从正文里重新找出主体；你手动添加的条目会保留"
+              title="用机构后缀、以下简称句式、职务上下文等规则，从正文里重新找出主体；你手动添加的条目会保留，改过名称或类型的不会被覆盖"
             >
               重新抽取
             </button>
@@ -194,7 +304,7 @@ export function ImportStep({ onNext }: Props) {
               全不选
             </button>
             <span className="lex-tools-hint">
-              取消勾选 = 不脱敏该主体 · 点类型可改
+              取消勾选 = 不脱敏 · 点名称可改内容 · 类型可下拉改
             </span>
           </div>
 
@@ -202,7 +312,7 @@ export function ImportStep({ onNext }: Props) {
             {items.length === 0 && (
               <div className="lex-empty">
                 {rawText.trim()
-                  ? '正文里没抽到主体，可在下方手动添加公司名、人名或项目名。'
+                  ? '正文里没抽到主体，可在下方手动添加，或在上方文字里拖选后加入。'
                   : '导入或粘贴材料后，这里会自动列出识别到的主体。'}
               </div>
             )}
@@ -221,18 +331,59 @@ export function ImportStep({ onNext }: Props) {
                   onChange={() => toggleDict(item.name)}
                   aria-label={`${item.enabled ? '取消' : '勾选'}${item.name}`}
                 />
-                <span className="lex-name" onClick={() => toggleDict(item.name)}>
-                  {item.name}
-                </span>
-                <button
-                  type="button"
-                  className="lex-type"
+                {editing === item.name ? (
+                  <span className="lex-edit-wrap">
+                    <input
+                      className="lex-edit-input"
+                      value={editName}
+                      autoFocus
+                      spellCheck={false}
+                      onChange={(e) => {
+                        setEditName(e.target.value);
+                        setEditError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitEdit(item.name);
+                        } else if (e.key === 'Escape') {
+                          setEditing(null);
+                          setEditError(null);
+                        }
+                      }}
+                      onBlur={() => commitEdit(item.name)}
+                    />
+                    {editError && <span className="lex-edit-error">{editError}</span>}
+                  </span>
+                ) : (
+                  <span
+                    className="lex-name"
+                    title="点击修改名称"
+                    onClick={() => {
+                      setEditing(item.name);
+                      setEditName(item.name);
+                      setEditError(null);
+                    }}
+                  >
+                    {item.name}
+                  </span>
+                )}
+                <select
+                  className="lex-type-select"
                   data-type={item.type}
-                  onClick={() => cycleDictType(item.name)}
-                  title="点击切换类型：机构 → 人名 → 项目 → 其他"
+                  value={item.type}
+                  onChange={(e) =>
+                    updateDict(item.name, { type: e.target.value as EntityType })
+                  }
+                  title="修改实体类型"
+                  aria-label={`${item.name} 的类型`}
                 >
-                  {item.type}
-                </button>
+                  {DICT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
                 <span className="lex-src">
                   {item.origin === 'manual' ? '手动' : sourceLabel(item.source!)}
                 </span>

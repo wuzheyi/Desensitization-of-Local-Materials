@@ -88,6 +88,28 @@ export function inferType(name: string): DictEntry['type'] {
   return '机构';
 }
 
+/** 项目/工程/计划类名称的典型结尾。 */
+const PROJECT_HINT = /(项目|工程|计划|课题|工程建设项目|专项|基金|工程总承包)$/;
+
+/**
+ * 给「从正文选中一段文字加入词表」用的类型推断，比 inferType 多覆盖项目与其他。
+ * 用于预填类型，用户随时可改——所以宁可粗一点，也不该因为判断不出就拒绝添加。
+ */
+export function inferEntityType(text: string): DictEntry['type'] {
+  const s = text.trim().replace(/\s+/g, '');
+  if (!s) return '其他';
+  if (PROJECT_HINT.test(s)) return '项目';
+  if (
+    /^[\u4e00-\u9fa5]{2,4}$/.test(s) &&
+    !ORG_HINT.test(s) &&
+    !/[《》]/.test(s)
+  ) {
+    return '人名';
+  }
+  if (ORG_HINT.test(s)) return '机构';
+  return '其他';
+}
+
 /**
  * 解析词表文本：一行一个名称，# 开头为注释。
  * 支持 `人名:张三`、`机构:云启科技` 显式指定类型；不写则按名称特征推断

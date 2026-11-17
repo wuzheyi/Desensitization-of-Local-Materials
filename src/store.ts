@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Candidate, EntityType } from './types';
 import { detect } from './core/detect';
 import { extractLexicon, type LexSource } from './core/lexicon';
+import { inferEntityType } from './core/dict';
 
 /** 一段字符区间，用于把「刚才动了哪里」传回界面高亮。 */
 export interface Span {
@@ -59,6 +60,18 @@ export interface SessionState {
   toggleDict: (name: string) => void;
   setAllDict: (enabled: boolean) => void;
   addDict: (name: string, type: EntityType) => { ok: boolean; message?: string };
+  /** 从正文选区加词：自动判型后加入清单，返回实际采用的类型。 */
+  addFromSelection: (text: string) => {
+    ok: boolean;
+    message?: string;
+    name?: string;
+    type?: EntityType;
+  };
+  /** 修改已有条目的名称与类型；返回是否成功及提示。 */
+  updateDict: (
+    oldName: string,
+    next: { name?: string; type?: EntityType },
+  ) => { ok: boolean; message?: string };
   removeDict: (name: string) => void;
   cycleDictType: (name: string) => void;
   analyze: () => void;
@@ -175,6 +188,65 @@ export const useSession = create<SessionState>((set, get) => ({
         ...items,
         { name: clean, type, enabled: true, origin: 'manual' },
       ],
+    });
+    return { ok: true };
+  },
+
+  addFromSelection: (text) => {
+    const clean = text.trim().replace(/\s+/g, '');
+    if (clean.length < 2) {
+      return { ok: false, message: '选中的文字太短，至少 2 个字' };
+    }
+    const type = inferEntityType(clean);
+    const r = get().addDict(clean, type);
+    if (!r.ok) return r;
+    // 记下出现次数，便于和抽取条目一致地展示
+    const count = findAllOccurrences(get().rawText, clean).length;
+    set({
+      dictItems: get().dictItems.map((i) =>
+        i.name === clean ? { ...i, count, source: undefined } : i,
+      ),
+    });
+    return { ok: true, name: clean, type };
+  },
+
+  updateDict: (oldName, next) => {
+    const items = get().dictItems;
+    const at = items.findIndex((i) => i.name === oldName);
+    if (at === -1) return { ok: false, message: `「${oldName}」不在清单中` };
+
+    const cleanName =
+      next.name === undefined
+        ? oldName
+        : next.name.trim().replace(/\s+/g, '');
+    if (cleanName.length < 2) {
+      return { ok: false, message: '名称至少 2 个字' };
+    }
+    if (
+      cleanName !== oldName &&
+      items.some((i, idx) => idx !== at && i.name === cleanName)
+    ) {
+      return { ok: false, message: `「${cleanName}」已在清单中` };
+    }
+
+    const type = next.type ?? items[at].type;
+    const renamed = cleanName !== oldName;
+    set({
+      dictItems: items.map((i, idx) =>
+        idx === at
+          ? {
+              ...i,
+              name: cleanName,
+              type,
+              // 内容或类型改过，都视为用户定稿，重抽时不被覆盖
+              typeEdited: i.typeEdited || renamed || type !== i.type,
+              origin: renamed ? 'manual' : i.origin,
+              count: renamed
+                ? findAllOccurrences(get().rawText, cleanName).length || i.count
+                : i.count,
+            }
+          : i,
+      ),
     });
     return { ok: true };
   },

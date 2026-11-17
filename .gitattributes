@@ -1,0 +1,2 @@
+# Windows 批处理必须用 CRLF，否则 cmd.exe 解析多行 if 块会错乱，start.bat 静默失败。
+*.bat text eol=crlf
