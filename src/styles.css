@@ -164,6 +164,15 @@ html, body {
 
 .raw-input { min-height: 220px; }
 
+.sep-dot { margin: 0 6px; color: #b8bdc6; }
+
+.prompt-input {
+  min-height: 150px;
+  background: #fffdf7;
+  border-color: #e8d9b0;
+}
+.prompt-input:focus { border-color: var(--accent); background: #fff; }
+
 /* ---------- 主体清单 ---------- */
 .lex-panel {
   border: 1px solid var(--border);

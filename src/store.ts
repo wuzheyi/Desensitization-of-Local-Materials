@@ -47,6 +47,12 @@ export interface SessionState {
   rawText: string;
   sourceName: string;
   dictItems: DictItem[];
+  /**
+   * 已经为哪一份正文抽过词表。自动抽取每份正文只做一次——
+   * 用户删改过清单后绝不能因为一次失焦又重新抽一遍，把改掉的内容加回来。
+   * 只有显式点「重新抽取」才会无视这个标记。
+   */
+  lexLoadedFor: string;
   maskDates: boolean;
   candidates: Candidate[];
   excluded: string[];
@@ -98,6 +104,7 @@ export const useSession = create<SessionState>((set, get) => ({
   rawText: '',
   sourceName: '',
   dictItems: [],
+  lexLoadedFor: '',
   maskDates: false,
   candidates: [],
   excluded: [],
@@ -114,6 +121,8 @@ export const useSession = create<SessionState>((set, get) => ({
       // 换了正文，抽取来的条目不再对应任何文字，必须清掉；
       // 手动添加的条目是用户自己的知识，留着，换稿后还能用
       dictItems: get().dictItems.filter((i) => i.origin === 'manual'),
+      // 新正文要重新抽一次；这份正文上做过的删改随旧正文一起作废
+      lexLoadedFor: '',
     }),
 
   setMaskDates: (v) => set({ maskDates: v }),
@@ -121,7 +130,7 @@ export const useSession = create<SessionState>((set, get) => ({
   loadLexicon: () => {
     const { rawText, dictItems } = get();
     if (!rawText.trim()) {
-      set({ dictItems: [] });
+      set({ dictItems: [], lexLoadedFor: '' });
       return 0;
     }
 
@@ -162,7 +171,9 @@ export const useSession = create<SessionState>((set, get) => ({
       }
     }
 
-    set({ dictItems: merged });
+    // 标记这份正文已抽过词表。之后失焦/直接开始识别都不再自动重抽，
+    // 用户对清单的删改才是最终状态；只有显式点「重新抽取」才会再次调用本函数。
+    set({ dictItems: merged, lexLoadedFor: rawText });
     return found.length;
   },
 
@@ -269,8 +280,9 @@ export const useSession = create<SessionState>((set, get) => ({
     const { rawText, maskDates } = get();
     if (!rawText) return;
 
-    // 从未抽取过就点开始识别：先自动抽取，候选默认全部勾选，不让用户卡在这一步
-    if (get().dictItems.length === 0) get().loadLexicon();
+    // 这份正文还没抽过才自动抽取。用户主动清空清单后直接识别，
+    // 应该按他的意思来（只脱敏规则项），不能又抽一遍把内容加回来。
+    if (get().lexLoadedFor !== rawText) get().loadLexicon();
 
     const result = detect(rawText, {
       dict: get()
@@ -350,6 +362,7 @@ export const useSession = create<SessionState>((set, get) => ({
       rawText: '',
       sourceName: '',
       dictItems: [],
+      lexLoadedFor: '',
       candidates: [],
       excluded: [],
       analyzed: false,

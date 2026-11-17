@@ -34,6 +34,7 @@ export function ImportStep({ onNext }: Props) {
   const rawText = useSession((s) => s.rawText);
   const sourceName = useSession((s) => s.sourceName);
   const items = useSession((s) => s.dictItems);
+  const lexLoadedFor = useSession((s) => s.lexLoadedFor);
   const maskDates = useSession((s) => s.maskDates);
   const setRawText = useSession((s) => s.setRawText);
   const setMaskDates = useSession((s) => s.setMaskDates);
@@ -66,10 +67,6 @@ export function ImportStep({ onNext }: Props) {
   const [editError, setEditError] = useState<string | null>(null);
 
   const enabledCount = useMemo(() => items.filter((i) => i.enabled).length, [items]);
-  const extracted = useMemo(
-    () => items.filter((i) => i.origin === 'lex').length,
-    [items],
-  );
 
   const captureSelection = () => {
     const el = rawRef.current;
@@ -155,8 +152,8 @@ export function ImportStep({ onNext }: Props) {
     }
     setError(null);
 
-    // 粘贴后没触发过抽取（比如直接按了按钮）：就地补一次
-    if (items.length === 0) loadLexicon();
+    // 这份正文还没抽过才补一次；用户主动清空清单不该被重新加回来
+    if (lexLoadedFor !== rawText) loadLexicon();
     const state = useSession.getState();
     const selected = state.dictItems.filter((i) => i.enabled).length;
 
@@ -238,8 +235,9 @@ export function ImportStep({ onNext }: Props) {
           onMouseUp={captureSelection}
           onKeyUp={captureSelection}
           onBlur={() => {
-            // 粘贴/输入后补一次抽取，列表为空时才做，避免打断人工勾选
-            if (extracted === 0 && rawText.trim()) loadLexicon();
+            // 这份正文还没抽过才补一次。抽过之后用户对清单的删改是最终状态，
+            // 失焦绝不再抽——否则「加入词表」时点一下按钮就把改掉的内容加回来了。
+            if (lexLoadedFor !== rawText && rawText.trim()) loadLexicon();
           }}
         />
         {selection && (

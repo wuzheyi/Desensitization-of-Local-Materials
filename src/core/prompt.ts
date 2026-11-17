@@ -16,6 +16,12 @@ export const PROMPT_TEMPLATE = [
   '',
 ].join('\n');
 
-export function buildPrompt(masked: string): string {
-  return `${PROMPT_TEMPLATE}${masked}`;
+/**
+ * 把用户（可能改过的）提示词与脱敏稿拼成一段可直接粘给 AI 的文本。
+ * prompt 参数缺省时用内置模板；界面允许用户在模板基础上增删约束。
+ */
+export function buildPrompt(masked: string, prompt: string = PROMPT_TEMPLATE): string {
+  const head = prompt.trimEnd();
+  // 用户可能把末尾的 --- 分隔符删掉，补一个空行保证两段不粘在一起
+  return head ? `${head}\n\n${masked}` : masked;
 }
