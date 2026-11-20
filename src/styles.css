@@ -53,6 +53,49 @@ html, body {
   letter-spacing: -0.01em;
 }
 
+/* 标题与「使用说明」同一行：说明是新用户的第一入口，不该被挤到右上角 */
+.brand-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.brand-head h1 { margin-bottom: 0; }
+
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 4px;
+  border: 1px solid #c7d9fb;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.help-btn:hover {
+  background: #dde9ff;
+  border-color: #9dbdf7;
+}
+
+.help-q {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .brand p {
   margin: 0;
   color: var(--muted);
@@ -920,6 +963,205 @@ code {
   border-radius: 3px;
 }
 
+/* ---------- 使用说明弹层 ---------- */
+.help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(17, 24, 39, 0.4);
+}
+
+.help-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: 86vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.help-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-head-text { min-width: 0; }
+
+.help-head h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.help-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.help-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.help-close:hover {
+  background: #f2f4f7;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.help-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.help-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-bottom: 6px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8f9fb;
+  font-size: 12px;
+  color: #374151;
+}
+
+.help-flow-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.help-flow-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e6ecf7;
+  color: #475569;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.help-flow-arrow {
+  margin-left: 4px;
+  color: #b8bdc6;
+}
+
+.help-step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.help-step-main { min-width: 0; }
+
+.help-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.help-step h3,
+.help-notes h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.help-label {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+.help-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.help-list li { margin-bottom: 2px; }
+
+.help-gain {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--ok-border);
+  border-radius: 8px;
+  background: var(--ok-bg);
+  color: #14532d;
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+
+.help-tip {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e8d9b0;
+  border-radius: 8px;
+  background: #fffdf7;
+  color: #7c5309;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.help-notes {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.help-notes h3 { margin-bottom: 8px; }
+
+.help-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: #fbfcfd;
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
   .app { padding: 18px 14px 50px; }
@@ -933,4 +1175,19 @@ code {
   .type-item { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 6px 10px; }
   .type-origin { display: none; }
   .selbar { gap: 8px; }
+  .help-backdrop { padding: 12px; align-items: flex-end; }
+  .help-dialog { max-height: 88vh; }
+  .help-head { padding: 14px 14px 12px; }
+  .help-body { padding: 12px 14px 16px; }
+  .help-foot { padding: 10px 14px; }
+  .help-step { grid-template-columns: 24px minmax(0, 1fr); gap: 10px; padding: 14px 0; }
+  .help-list { font-size: 12.5px; line-height: 1.75; }
+}
+
+/* 窄屏底部按钮独占一行，提示文字让位给按钮 */
+@media (max-width: 640px) {
+  .help-foot { justify-content: stretch; }
+  .help-foot .muted { display: none; }
+  .help-foot .primary { width: 100%; }
+  .help-head p { font-size: 12px; }
 }

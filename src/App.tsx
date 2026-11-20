@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSession } from './store';
 import { buildLedger } from './core/ledger';
 import type { RestoreResult } from './core/restore';
+import { HelpDialog } from './components/HelpDialog';
 import { ImportStep } from './components/ImportStep';
 import { MaskStep } from './components/MaskStep';
 import { ExportStep } from './components/ExportStep';
@@ -19,6 +20,7 @@ export default function App() {
   const [step, setStep] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
   const [result, setResult] = useState<RestoreResult | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const ledger = useMemo(() => {
     const usable = candidates.filter((c) => !excluded.includes(c.canonical));
@@ -41,7 +43,20 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <h1>尽调材料脱敏 · 可逆还原</h1>
+          <div className="brand-head">
+            <h1>尽调材料脱敏 · 可逆还原</h1>
+            <button
+              type="button"
+              className="help-btn"
+              onClick={() => setHelpOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={helpOpen}
+              title="五步流程、每步能做什么、能得到什么"
+            >
+              <span className="help-q" aria-hidden="true">?</span>
+              使用说明
+            </button>
+          </div>
           <p>把主体信息与金额比例替换成占位符，交给 AI 润色后，在本机还原回原始信息。</p>
         </div>
         <div className="topbar-right">
@@ -87,6 +102,8 @@ export default function App() {
         原始文本、实体账本与还原结果全部留在浏览器内存中，刷新页面即消失。
         页面不加载任何第三方脚本，也不发起网络请求 —— 打开本页后断开网络、再走一遍流程即可自行验证。
       </footer>
+
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
